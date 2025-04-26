@@ -1,0 +1,156 @@
+<!DOCTYPE html>
+<html lang="en" class="bg-black text-white">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Image Group Manager</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <style>
+    .fade-in { animation: fadeIn 0.5s ease-in forwards; }
+    @keyframes fadeIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
+    .toast { animation: slideDown 0.5s ease-out forwards; }
+    @keyframes slideDown { from { transform: translateY(-100%); opacity: 0; } to { transform: translateY(0); opacity: 1; } }
+  </style>
+</head>
+
+<body class="min-h-screen flex flex-col items-center p-4 gap-6 relative">
+  <header class="text-center mb-6">
+    <h1 class="text-4xl font-bold text-yellow-400">Image Group Manager</h1>
+  </header>
+
+  <section class="w-full max-w-5xl flex flex-col gap-4">
+    <div class="flex gap-2 justify-center">
+      <button id="createGroupBtn" class="bg-yellow-400 text-black font-semibold py-2 px-4 rounded hover:bg-yellow-300 transition">
+        + Create New Group
+      </button>
+    </div>
+
+    <div id="groupsContainer" class="grid gap-6 grid-cols-1 sm:grid-cols-2 md:grid-cols-3">
+      <!-- Groups will appear here -->
+    </div>
+  </section>
+
+  <!-- Toast container -->
+  <div id="toastContainer" class="fixed top-4 inset-x-0 flex justify-center items-center z-50 pointer-events-none"></div>
+
+  <footer class="w-full max-w-5xl mt-10 pt-6 border-t border-yellow-400 flex flex-col sm:flex-row justify-between items-center text-sm text-gray-300 gap-4">
+    <div class="flex flex-col items-center sm:items-start gap-2">
+      <a href="tel:+1234567890" class="hover:text-yellow-400 transition">📞 +1 234 567 890</a>
+      <a href="mailto:youremail@example.com" class="hover:text-yellow-400 transition">📧 youremail@example.com</a>
+    </div>
+    <div class="flex gap-4">
+      <a href="https://linkedin.com/in/yourlinkedin" target="_blank" class="hover:text-yellow-400 transition" aria-label="LinkedIn">
+        🔗
+      </a>
+      <a href="https://instagram.com/yourinstagram" target="_blank" class="hover:text-yellow-400 transition" aria-label="Instagram">
+        📸
+      </a>
+    </div>
+  </footer>
+
+  <script>
+    const groupsContainer = document.getElementById('groupsContainer');
+    const createGroupBtn = document.getElementById('createGroupBtn');
+    const toastContainer = document.getElementById('toastContainer');
+
+    // 🚨 Token setup (hide from HTML)
+    const githubConfig = {
+      username: 'vijayshankarmishra',
+      repo: 'my image gallery',
+      branch: 'main',
+      folder: 'uploads',
+      token: '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'
+    };
+
+    const createElement = (tag, classes = '', attributes = {}) => {
+      const el = document.createElement(tag);
+      if (classes) el.className = classes;
+      for (const [key, value] of Object.entries(attributes)) el.setAttribute(key, value);
+      return el;
+    };
+
+    const showToast = (message, type = 'success') => {
+      const toast = createElement('div', `toast text-center px-4 py-2 rounded font-semibold 
+        ${type === 'success' ? 'bg-green-500' : 'bg-red-500'}`);
+      toast.innerText = message;
+      toastContainer.appendChild(toast);
+      setTimeout(() => toast.remove(), 3000);
+    };
+
+    const createGroup = () => {
+      const groupCard = createElement('div', 'bg-white text-black rounded-lg shadow p-4 flex flex-col gap-3 fade-in');
+      const title = createElement('input', 'text-2xl font-bold outline-none bg-transparent w-full', { value: 'Group Title', type: 'text' });
+      const description = createElement('textarea', 'text-sm outline-none bg-transparent w-full resize-none', { rows: 2, placeholder: 'Add a small description...' });
+      const imageContainer = createElement('div', 'flex flex-wrap gap-2 mt-2');
+      const uploadInput = createElement('input', 'hidden', { type: 'file', accept: 'image/*', multiple: true });
+      const uploadBtn = createElement('button', 'bg-yellow-400 text-black font-semibold py-1 px-3 rounded hover:bg-yellow-300 transition self-start', { type: 'button' });
+      uploadBtn.innerText = 'Upload Images';
+
+      uploadBtn.addEventListener('click', () => uploadInput.click());
+      uploadInput.addEventListener('change', (e) => handleImageUpload(e, imageContainer, uploadBtn));
+
+      groupCard.append(title, description, uploadBtn, uploadInput, imageContainer);
+      groupsContainer.appendChild(groupCard);
+    };
+
+    const handleImageUpload = (event, container, uploadBtn) => {
+      const files = Array.from(event.target.files);
+      if (!files.length) return;
+
+      uploadBtn.disabled = true;
+      uploadBtn.innerText = 'Uploading...';
+
+      files.forEach(file => {
+        const reader = new FileReader();
+        reader.onload = async (e) => {
+          const filename = `${file.name.split('.')[0]}_${Date.now()}.${file.name.split('.').pop()}`;
+          const base64Content = e.target.result.split(',')[1];
+
+          const uploadSuccess = await uploadToGitHub(file, filename, base64Content);
+          if (uploadSuccess) {
+            fetchFromGitHubAndDisplay(filename, container);
+          }
+        };
+        reader.readAsDataURL(file);
+      });
+
+      uploadBtn.disabled = false;
+      uploadBtn.innerText = 'Upload Images';
+    };
+
+    const uploadToGitHub = async (file, filename, base64Content) => {
+      const url = `https://api.github.com/repos/${githubConfig.username}/${githubConfig.repo}/contents/${githubConfig.folder}/${filename}`;
+      try {
+        const response = await fetch(url, {
+          method: 'PUT',
+          headers: {
+            'Authorization': `token ${githubConfig.token}`,
+            'Content-Type': 'application/json'
+          },
+          body: JSON.stringify({
+            message: `Uploaded ${filename}`,
+            content: base64Content,
+            branch: githubConfig.branch
+          })
+        });
+        if (!response.ok) throw new Error('GitHub upload failed');
+        showToast('Uploaded successfully!', 'success');
+        return true;
+      } catch (error) {
+        console.error(error);
+        showToast('Failed to upload!', 'error');
+        return false;
+      }
+    };
+
+    const fetchFromGitHubAndDisplay = (filename, container) => {
+      const imageUrl = `https://raw.githubusercontent.com/${githubConfig.username}/${githubConfig.repo}/${githubConfig.branch}/${githubConfig.folder}/${filename}`;
+      const img = createElement('img', 'h-24 w-24 object-cover rounded-md fade-in', { src: imageUrl });
+      container.appendChild(img);
+    };
+
+    createGroupBtn.addEventListener('click', createGroup);
+  </script>
+
+</body>
+</html>
